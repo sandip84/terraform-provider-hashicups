@@ -6,16 +6,19 @@ import (
 
 	"github.com/hashicorp-demoapp/hashicups-client-go"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
 var (
-	_ provider.Provider = &hashicupsProvider{}
+	_ provider.Provider              = &hashicupsProvider{}
+	_ provider.ProviderWithFunctions = &hashicupsProvider{}
 )
 
 // New is a helper function to simplify provider server and testing implementation.
@@ -62,6 +65,7 @@ func (p *hashicupsProvider) Schema(_ context.Context, _ provider.SchemaRequest, 
 // Configure prepares a HashiCups API client for data sources and resources.
 func (p *hashicupsProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	// Retrieve provider data from configuration
+	tflog.Info(ctx, "Configuring HashiCups client")
 	var config hashicupsProviderModel
 	diags := req.Config.Get(ctx, &config)
 	resp.Diagnostics.Append(diags...)
@@ -158,7 +162,12 @@ func (p *hashicupsProvider) Configure(ctx context.Context, req provider.Configur
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	ctx = tflog.SetField(ctx, "hashicups_host", host)
+	ctx = tflog.SetField(ctx, "hashicups_username", username)
+	ctx = tflog.SetField(ctx, "hashicups_password", password)
+	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "hashicups_password")
 
+	tflog.Debug(ctx, "Creating HashiCups client")
 	// Create a new HashiCups client using the configuration values
 	client, err := hashicups.NewClient(&host, &username, &password)
 	if err != nil {
@@ -175,6 +184,7 @@ func (p *hashicupsProvider) Configure(ctx context.Context, req provider.Configur
 	// type Configure methods.
 	resp.DataSourceData = client
 	resp.ResourceData = client
+	tflog.Info(ctx, "Configured HashiCups client", map[string]any{"success": true})
 }
 
 // DataSources defines the data sources implemented in the provider.
@@ -196,4 +206,10 @@ type hashicupsProviderModel struct {
 	Host     types.String `tfsdk:"host"`
 	Username types.String `tfsdk:"username"`
 	Password types.String `tfsdk:"password"`
+}
+
+func (p *hashicupsProvider) Functions(_ context.Context) []func() function.Function {
+	return []func() function.Function{
+		NewComputeTaxFunction,
+	}
 }
